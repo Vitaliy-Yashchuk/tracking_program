@@ -1,0 +1,69 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <MFRC522.h>
+
+// Встановлюємо адресу дисплея (зазвичай 0x27 або 0x3F)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Піни для RFID-RC522
+#define SS_PIN 10
+#define RST_PIN 9
+
+MFRC522 rfid(SS_PIN, RST_PIN); // Об'єкт для RFID
+
+const int maxSeats = 3; // Максимальна кількість вільних місць
+int freeSeats = maxSeats; // Кількість вільних місць
+String uids[maxSeats]; // Масив для зберігання UID
+int currentIndex = 0; // Індекс для масиву
+
+void setup() {
+  // Ініціалізуємо дисплей
+  lcd.begin(16, 2); // Передаємо кількість стовпців і рядків
+  lcd.backlight(); // Включаємо підсвітку
+  // Ініціалізуємо RFID
+  SPI.begin();
+  rfid.PCD_Init();
+  
+  // Виводимо стартове повідомлення
+  lcd.print("Free sit: 3");
+}
+
+void loop() {
+  // Перевіряємо, чи є карта на зчитувачі
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    String uid = "";
+    for (byte i = 0; i < rfid.uid.size; i++) {
+      uid += String(rfid.uid.uidByte[i], HEX);
+    }
+
+    // Перевіряємо, чи вже зчитана картка
+    bool found = false;
+    for (int i = 0; i < currentIndex; i++) {
+      if (uids[i] == uid) {
+        found = true;
+        // Видаляємо картку з масиву
+        for (int j = i; j < currentIndex - 1; j++) {
+          uids[j] = uids[j + 1];
+        }
+        currentIndex--;
+        freeSeats++;
+        break;
+      }
+    }
+
+    // Якщо картка не знайдена, додаємо її
+    if (!found && currentIndex < maxSeats) {
+      uids[currentIndex] = uid;
+      currentIndex++;
+      freeSeats--;
+    }
+
+    // Оновлюємо інформацію на дисплеї
+    lcd.clear();
+    lcd.print("Free sit: ");
+    lcd.print(freeSeats);
+    delay(1000); // Затримка для уникнення повторних зчитувань
+    rfid.PICC_HaltA(); // Зупиняємо зчитування
+  }
+}
